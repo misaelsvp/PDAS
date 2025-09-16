@@ -1,0 +1,17 @@
+[core]
+    autocrlf = true
+    editor = code --wait
+[init]
+    defaultBranch = main
+[push]
+    default = simple
+[pull]
+    rebase = false
+[alias]
+    st = status
+    co = checkout
+    br = branch
+    ci = commit
+    unstage = reset HEAD --
+    last = log -1 HEAD
+    visual = !gitk
