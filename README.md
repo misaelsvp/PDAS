@@ -58,4 +58,4 @@ jupyter notebook
 
 ## Autores
 
-Misael de Souza e João Cocenza - TCC em Engenharia de Produção/UFMG]
+Misael de Souza e João Cocenza - TCC em Engenharia de Produção/UFMG
