@@ -227,6 +227,8 @@
         let currentIndice = 'saude';
         let allGeoJSONData = null; // Armazena todos os dados carregados
         let loadTimeout = null; // Para debounce do carregamento
+        let estadosCarregados = new Map(); // Cache de estados já carregados
+        let indiceEstados = null; // Índice de estados disponíveis
         
         /**
          * Funcao para obter cor baseada no valor do indice
@@ -361,41 +363,222 @@
         }
         
         /**
-         * Carrega o GeoJSON completo uma vez e armazena em memória
-         * Esta função é chamada apenas na primeira vez
+         * Carrega o índice de estados disponíveis
+         */
+        function loadIndiceEstados() {
+            if (indiceEstados) {
+                return Promise.resolve(indiceEstados);
+            }
+            
+            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
+            return fetch(`${baseUrl}/data/estados/indice_estados.json`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Índice não encontrado');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    indiceEstados = data;
+                    return data;
+                })
+                .catch(() => {
+                    // Se não houver índice, retorna null para usar fallback
+                    return null;
+                });
+        }
+        
+        /**
+         * Carrega setores de estados visíveis no viewport
+         * Usa arquivos divididos por estado para economizar dados
+         */
+        function loadEstadosVisiveis(bounds) {
+            return loadIndiceEstados().then(indice => {
+                if (!indice) {
+                    // Fallback: tentar carregar arquivo completo
+                    return loadFullGeoJSONFallback();
+                }
+                
+                // Determina quais estados estão no viewport
+                const sw = bounds.getSouthWest();
+                const ne = bounds.getNorthEast();
+                
+                // Coordenadas aproximadas dos estados brasileiros
+                const estadosBounds = {
+                    'AC': { minLat: -11.0, maxLat: -7.0, minLng: -74.0, maxLng: -66.0 },
+                    'AL': { minLat: -10.5, maxLat: -8.5, minLng: -38.0, maxLng: -35.5 },
+                    'AP': { minLat: 1.0, maxLat: 4.5, minLng: -52.0, maxLng: -50.0 },
+                    'AM': { minLat: -12.0, maxLat: 2.0, minLng: -74.0, maxLng: -56.0 },
+                    'BA': { minLat: -18.0, maxLat: -8.0, minLng: -46.0, maxLng: -34.0 },
+                    'CE': { minLat: -7.5, maxLat: -2.5, minLng: -41.0, maxLng: -37.0 },
+                    'DF': { minLat: -16.0, maxLat: -15.0, minLng: -48.0, maxLng: -47.0 },
+                    'ES': { minLat: -21.0, maxLat: -17.5, minLng: -41.5, maxLng: -39.5 },
+                    'GO': { minLat: -19.0, maxLat: -13.0, minLng: -52.0, maxLng: -45.0 },
+                    'MA': { minLat: -10.0, maxLat: -1.0, minLng: -48.0, maxLng: -41.0 },
+                    'MT': { minLat: -18.0, maxLat: -7.0, minLng: -61.0, maxLng: -50.0 },
+                    'MS': { minLat: -24.0, maxLat: -17.0, minLng: -58.0, maxLng: -50.0 },
+                    'MG': { minLat: -23.0, maxLat: -14.0, minLng: -51.0, maxLng: -39.0 },
+                    'PA': { minLat: -10.0, maxLat: 2.0, minLng: -58.0, maxLng: -46.0 },
+                    'PB': { minLat: -8.5, maxLat: -6.0, minLng: -38.5, maxLng: -34.5 },
+                    'PR': { minLat: -26.0, maxLat: -22.0, minLng: -54.0, maxLng: -48.0 },
+                    'PE': { minLat: -9.5, maxLat: -7.0, minLng: -41.0, maxLng: -34.5 },
+                    'PI': { minLat: -11.0, maxLat: -2.5, minLng: -45.0, maxLng: -40.5 },
+                    'RJ': { minLat: -23.5, maxLat: -20.5, minLng: -45.0, maxLng: -40.5 },
+                    'RN': { minLat: -6.0, maxLat: -4.5, minLng: -38.0, maxLng: -35.0 },
+                    'RS': { minLat: -34.0, maxLat: -27.0, minLng: -58.0, maxLng: -49.0 },
+                    'RO': { minLat: -13.0, maxLat: -7.0, minLng: -66.0, maxLng: -59.0 },
+                    'RR': { minLat: 0.5, maxLat: 6.0, minLng: -65.0, maxLng: -59.0 },
+                    'SC': { minLat: -29.0, maxLat: -25.5, minLng: -53.5, maxLng: -48.5 },
+                    'SP': { minLat: -25.0, maxLat: -19.5, minLng: -53.0, maxLng: -44.0 },
+                    'SE': { minLat: -11.5, maxLat: -9.5, minLng: -38.0, maxLng: -36.0 },
+                    'TO': { minLat: -13.5, maxLat: -5.0, minLng: -50.0, maxLng: -45.0 }
+                };
+                
+                // Encontra estados que intersectam com o viewport
+                const estadosVisiveis = [];
+                for (const [sigla, boundsEstado] of Object.entries(estadosBounds)) {
+                    if (!(ne.lng < boundsEstado.minLng || sw.lng > boundsEstado.maxLng ||
+                          ne.lat < boundsEstado.minLat || sw.lat > boundsEstado.maxLat)) {
+                        estadosVisiveis.push(sigla);
+                    }
+                }
+                
+                // Carrega arquivos dos estados visíveis
+                const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
+                const promises = estadosVisiveis.map(sigla => {
+                    if (estadosCarregados.has(sigla)) {
+                        return Promise.resolve(estadosCarregados.get(sigla));
+                    }
+                    
+                    // Encontra arquivo do estado no índice
+                    const estadoInfo = indice.estados.find(e => 
+                        e.estado === sigla || e.arquivo.includes(sigla.toLowerCase())
+                    );
+                    
+                    if (!estadoInfo) {
+                        return Promise.resolve(null);
+                    }
+                    
+                    return fetch(`${baseUrl}/data/${estadoInfo.arquivo}`)
+                        .then(response => {
+                            if (!response.ok) return null;
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data) {
+                                estadosCarregados.set(sigla, data);
+                            }
+                            return data;
+                        })
+                        .catch(() => null);
+                });
+                
+                return Promise.all(promises).then(results => {
+                    // Combina todos os estados em um único GeoJSON
+                    const allFeatures = [];
+                    results.forEach(geojson => {
+                        if (geojson && geojson.features) {
+                            allFeatures.push(...geojson.features);
+                        }
+                    });
+                    
+                    return {
+                        type: 'FeatureCollection',
+                        features: allFeatures
+                    };
+                });
+            });
+        }
+        
+        /**
+         * Fallback: carrega arquivo completo se não houver divisão por estado
+         */
+        function loadFullGeoJSONFallback() {
+            if (allGeoJSONData) {
+                return Promise.resolve(allGeoJSONData);
+            }
+            
+            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
+            
+            // Tenta carregar arquivo completo do Brasil primeiro
+            const geojsonPaths = [
+                `${baseUrl}/data/setores_censitarios_brasil_ultra.geojson`,  // Arquivo ultra otimizado
+                `${baseUrl}/data/setores_censitarios_brasil_web.geojson`,     // Arquivo otimizado
+                `${baseUrl}/data/setores_censitarios_brasil_completo.geojson`, // Arquivo completo
+                `${baseUrl}/data/setores_censitarios_real.geojson`            // Fallback: apenas alguns municípios
+            ];
+            
+            document.getElementById('info-text').innerHTML = 
+                '<span style="color: #0066cc;">Carregando dados do Brasil... Isso pode levar alguns minutos.</span>';
+            
+            // Tenta carregar cada arquivo em ordem até encontrar um disponível
+            let currentIndex = 0;
+            
+            function tryLoadNext() {
+                if (currentIndex >= geojsonPaths.length) {
+                    document.getElementById('info-text').innerHTML = 
+                        '<span style="color: red;">Nenhum arquivo GeoJSON encontrado. Verifique se os arquivos estão disponíveis.</span>';
+                    return Promise.reject(new Error('Nenhum arquivo GeoJSON disponível'));
+                }
+                
+                const geojsonPath = geojsonPaths[currentIndex];
+                console.log(`Tentando carregar: ${geojsonPath}`);
+                
+                return fetch(geojsonPath)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        document.getElementById('info-text').innerHTML = 
+                            `<span style="color: #0066cc;">Arquivo encontrado! Processando dados... Por favor, aguarde.</span>`;
+                        return response.json();
+                    })
+                    .then(data => {
+                        allGeoJSONData = data;
+                        const totalSetores = data.features ? data.features.length : 0;
+                        document.getElementById('info-text').innerHTML = 
+                            `<span style="color: #2e7d32;">Dados carregados! ${totalSetores.toLocaleString('pt-BR')} setores disponíveis. Navegue pelo mapa para visualizar.</span>`;
+                        console.log(`Arquivo carregado com sucesso: ${totalSetores} setores`);
+                        return data;
+                    })
+                    .catch(error => {
+                        console.warn(`Erro ao carregar ${geojsonPath}, tentando próximo arquivo...`, error);
+                        currentIndex++;
+                        return tryLoadNext();
+                    });
+            }
+            
+            return tryLoadNext();
+        }
+        
+        /**
+         * Carrega dados - tenta por estados primeiro, depois fallback para arquivo completo
          */
         function loadFullGeoJSON() {
             if (allGeoJSONData) {
                 return Promise.resolve(allGeoJSONData);
             }
             
-            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
-            const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
+            const bounds = map.getBounds();
             
-            document.getElementById('info-text').innerHTML = 
-                '<span style="color: #0066cc;">Carregando dados do Brasil... Isso pode levar alguns minutos.</span>';
-            
-            return fetch(geojsonPath)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+            // Tenta carregar estados visíveis primeiro (mais eficiente)
+            return loadEstadosVisiveis(bounds).then(geojsonData => {
+                if (!geojsonData || !geojsonData.features || geojsonData.features.length === 0) {
+                    // Fallback: carregar arquivo completo
+                    return loadFullGeoJSONFallback();
+                }
+                return geojsonData;
+            }).then(geojsonData => {
+                if (!geojsonData) {
                     document.getElementById('info-text').innerHTML = 
-                        '<span style="color: #0066cc;">Processando dados... Por favor, aguarde.</span>';
-                    return response.json();
-                })
-                .then(data => {
-                    allGeoJSONData = data;
-                    document.getElementById('info-text').innerHTML = 
-                        '<span style="color: #2e7d32;">Dados carregados! Navegue pelo mapa para visualizar os setores.</span>';
-                    return data;
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar dados GeoJSON:', error);
-                    document.getElementById('info-text').innerHTML = 
-                        '<span style="color: red;">Erro ao carregar dados. Verifique se o arquivo está disponível.</span>';
-                    throw error;
-                });
+                        '<span style="color: red;">Erro ao carregar dados.</span>';
+                    return null;
+                }
+                
+                // Armazena dados carregados para filtragem
+                allGeoJSONData = geojsonData;
+                return geojsonData;
+            });
         }
         
         /**
@@ -412,7 +595,11 @@
             }
             
             // Carrega dados completos se ainda não foram carregados
-            loadFullGeoJSON().then(() => {
+            loadFullGeoJSON().then(geojsonData => {
+                if (!geojsonData || !geojsonData.features) {
+                    return;
+                }
+                
                 // Obtém bounding box do viewport atual (com margem de 20% para pré-carregar áreas próximas)
                 const bounds = map.getBounds();
                 const sw = bounds.getSouthWest();
@@ -431,7 +618,7 @@
                 ];
                 
                 // Filtra apenas features dentro do bounding box
-                const visibleFeatures = allGeoJSONData.features.filter(feature => {
+                const visibleFeatures = geojsonData.features.filter(feature => {
                     if (!feature.geometry || !feature.geometry.coordinates) return false;
                     
                     // Calcula bounding box do feature
@@ -489,8 +676,9 @@
                 };
                 
                 // Atualiza contador
+                const totalSetores = geojsonData.features ? geojsonData.features.length : processedFeatures.length;
                 document.getElementById('info-text').innerHTML = 
-                    `<span style="color: #0066cc;">Exibindo ${processedFeatures.length.toLocaleString('pt-BR')} setores visíveis de ${allGeoJSONData.features.length.toLocaleString('pt-BR')} total</span>`;
+                    `<span style="color: #0066cc;">Exibindo ${processedFeatures.length.toLocaleString('pt-BR')} setores visíveis${totalSetores > processedFeatures.length ? ` de ${totalSetores.toLocaleString('pt-BR')} carregados` : ''}</span>`;
                 
                 // Cria camada GeoJSON apenas com setores visíveis
                 currentLayer = L.geoJSON(visibleGeoJSON, {
@@ -570,18 +758,15 @@
         map.on('moveend', function() {
             if (loadTimeout) clearTimeout(loadTimeout);
             loadTimeout = setTimeout(() => {
-                if (allGeoJSONData) {
-                    loadVisibleData(currentPeriod, currentIndice);
-                }
+                // Se estiver usando divisão por estados, recarrega (o cache é gerenciado automaticamente)
+                loadVisibleData(currentPeriod, currentIndice);
             }, 300);
         });
         
         map.on('zoomend', function() {
             if (loadTimeout) clearTimeout(loadTimeout);
             loadTimeout = setTimeout(() => {
-                if (allGeoJSONData) {
-                    loadVisibleData(currentPeriod, currentIndice);
-                }
+                loadVisibleData(currentPeriod, currentIndice);
             }, 300);
         });
         

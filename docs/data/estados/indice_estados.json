@@ -1,0 +1,201 @@
+{
+  "estados": [
+    {
+      "estado": "AC",
+      "codigo": "12",
+      "arquivo": "estados/setores_ac.geojson",
+      "setores": 2215,
+      "tamanho_mb": 2.23
+    },
+    {
+      "estado": "AM",
+      "codigo": "13",
+      "arquivo": "estados/setores_am.geojson",
+      "setores": 10729,
+      "tamanho_mb": 12.33
+    },
+    {
+      "estado": "PA",
+      "codigo": "15",
+      "arquivo": "estados/setores_pa.geojson",
+      "setores": 16714,
+      "tamanho_mb": 12.96
+    },
+    {
+      "estado": "PI",
+      "codigo": "22",
+      "arquivo": "estados/setores_pi.geojson",
+      "setores": 7340,
+      "tamanho_mb": 4.42
+    },
+    {
+      "estado": "CE",
+      "codigo": "23",
+      "arquivo": "estados/setores_ce.geojson",
+      "setores": 20979,
+      "tamanho_mb": 9.94
+    },
+    {
+      "estado": "AL",
+      "codigo": "27",
+      "arquivo": "estados/setores_al.geojson",
+      "setores": 6359,
+      "tamanho_mb": 3.01
+    },
+    {
+      "estado": "MG",
+      "codigo": "31",
+      "arquivo": "estados/setores_mg.geojson",
+      "setores": 51387,
+      "tamanho_mb": 28.32
+    },
+    {
+      "estado": "ES",
+      "codigo": "32",
+      "arquivo": "estados/setores_es.geojson",
+      "setores": 8706,
+      "tamanho_mb": 4.41
+    },
+    {
+      "estado": "RJ",
+      "codigo": "33",
+      "arquivo": "estados/setores_rj.geojson",
+      "setores": 41700,
+      "tamanho_mb": 16.7
+    },
+    {
+      "estado": "SP",
+      "codigo": "35",
+      "arquivo": "estados/setores_sp.geojson",
+      "setores": 103319,
+      "tamanho_mb": 41.79
+    },
+    {
+      "estado": "PR",
+      "codigo": "41",
+      "arquivo": "estados/setores_pr.geojson",
+      "setores": 23777,
+      "tamanho_mb": 13.73
+    },
+    {
+      "estado": "RO",
+      "codigo": "11",
+      "arquivo": "estados/setores_ro.geojson",
+      "setores": 3456,
+      "tamanho_mb": 2.6
+    },
+    {
+      "estado": "RR",
+      "codigo": "14",
+      "arquivo": "estados/setores_rr.geojson",
+      "setores": 1783,
+      "tamanho_mb": 1.68
+    },
+    {
+      "estado": "AP",
+      "codigo": "16",
+      "arquivo": "estados/setores_ap.geojson",
+      "setores": 1492,
+      "tamanho_mb": 1.08
+    },
+    {
+      "estado": "TO",
+      "codigo": "17",
+      "arquivo": "estados/setores_to.geojson",
+      "setores": 4117,
+      "tamanho_mb": 3.99
+    },
+    {
+      "estado": "MA",
+      "codigo": "21",
+      "arquivo": "estados/setores_ma.geojson",
+      "setores": 16301,
+      "tamanho_mb": 9.59
+    },
+    {
+      "estado": "RN",
+      "codigo": "24",
+      "arquivo": "estados/setores_rn.geojson",
+      "setores": 6095,
+      "tamanho_mb": 2.96
+    },
+    {
+      "estado": "PB",
+      "codigo": "25",
+      "arquivo": "estados/setores_pb.geojson",
+      "setores": 9639,
+      "tamanho_mb": 4.63
+    },
+    {
+      "estado": "PE",
+      "codigo": "26",
+      "arquivo": "estados/setores_pe.geojson",
+      "setores": 19578,
+      "tamanho_mb": 8.88
+    },
+    {
+      "estado": "SE",
+      "codigo": "28",
+      "arquivo": "estados/setores_se.geojson",
+      "setores": 5346,
+      "tamanho_mb": 2.5
+    },
+    {
+      "estado": "BA",
+      "codigo": "29",
+      "arquivo": "estados/setores_ba.geojson",
+      "setores": 30985,
+      "tamanho_mb": 17.72
+    },
+    {
+      "estado": "SC",
+      "codigo": "42",
+      "arquivo": "estados/setores_sc.geojson",
+      "setores": 16736,
+      "tamanho_mb": 9.12
+    },
+    {
+      "estado": "UFNo",
+      "codigo": "No",
+      "arquivo": "estados/setores_ufno.geojson",
+      "setores": 2,
+      "tamanho_mb": 0.03
+    },
+    {
+      "estado": "RS",
+      "codigo": "43",
+      "arquivo": "estados/setores_rs.geojson",
+      "setores": 25567,
+      "tamanho_mb": 14.84
+    },
+    {
+      "estado": "MS",
+      "codigo": "50",
+      "arquivo": "estados/setores_ms.geojson",
+      "setores": 6117,
+      "tamanho_mb": 4.8
+    },
+    {
+      "estado": "MT",
+      "codigo": "51",
+      "arquivo": "estados/setores_mt.geojson",
+      "setores": 9381,
+      "tamanho_mb": 9.86
+    },
+    {
+      "estado": "GO",
+      "codigo": "52",
+      "arquivo": "estados/setores_go.geojson",
+      "setores": 12861,
+      "tamanho_mb": 8.98
+    },
+    {
+      "estado": "DF",
+      "codigo": "53",
+      "arquivo": "estados/setores_df.geojson",
+      "setores": 5418,
+      "tamanho_mb": 2.09
+    }
+  ],
+  "total_setores": 468099
+}

@@ -137,9 +137,12 @@ data/outputs/*.jpg
 data/outputs/*.pdf
 
 # Large GeoJSON files (use Git LFS or split them)
-# Ignorando todos os arquivos GeoJSON grandes, exceto setores_censitarios_real.geojson
+# Ignorando todos os arquivos GeoJSON grandes, exceto os necessários para o site
 docs/data/*.geojson
 !docs/data/setores_censitarios_real.geojson
+!docs/data/setores_censitarios_brasil_ultra.geojson
+!docs/data/estados/*.geojson
+!docs/data/estados/*.json
 docs/_site/
 docs/.jekyll-cache/
 docs/.sass-cache/
