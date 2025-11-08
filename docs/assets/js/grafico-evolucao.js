@@ -28,35 +28,115 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     /**
-     * Carrega dados GeoJSON dos setores censitarios
-     * Os dados sao carregados uma vez e reutilizados para melhor performance
+     * Carrega índice de estados disponíveis
      */
-    function carregarDadosGeoJSON() {
-        if (dadosGeoJSON) {
-            return Promise.resolve(dadosGeoJSON);
+    let indiceEstados = null;
+    let estadosCarregadosGrafico = new Map();
+    
+    function carregarIndiceEstados() {
+        if (indiceEstados) {
+            return Promise.resolve(indiceEstados);
         }
-
-        // Detecta baseurl automaticamente para GitHub Pages
-        const baseUrl = window.location.pathname.split('/').slice(0, -1).join('/') || '';
-        const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
         
-        // Tenta carregar o arquivo completo primeiro, com fallback para versão menor
-        return fetch(geojsonPath)
+        const baseUrl = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+        return fetch(`${baseUrl}/data/estados/indice_estados.json`)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error('Índice não encontrado');
                 }
                 return response.json();
             })
             .then(data => {
-                dadosGeoJSON = data;
-                setoresCarregados = true;
+                indiceEstados = data;
                 return data;
             })
-            .catch(error => {
-                console.error('Erro ao carregar dados GeoJSON:', error);
+            .catch(() => {
                 return null;
             });
+    }
+    
+    /**
+     * Carrega dados GeoJSON dos setores censitarios
+     * Tenta carregar por estados primeiro, depois fallback para arquivo completo
+     */
+    function carregarDadosGeoJSON() {
+        if (dadosGeoJSON && setoresCarregados) {
+            return Promise.resolve(dadosGeoJSON);
+        }
+
+        const baseUrl = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+        
+        // Tenta carregar índice de estados primeiro
+        return carregarIndiceEstados().then(indice => {
+            if (indice && indice.estados) {
+                // Carrega todos os estados
+                const promises = indice.estados.map(estadoInfo => {
+                    if (estadosCarregadosGrafico.has(estadoInfo.estado)) {
+                        return Promise.resolve(estadosCarregadosGrafico.get(estadoInfo.estado));
+                    }
+                    
+                    return fetch(`${baseUrl}/data/${estadoInfo.arquivo}`)
+                        .then(response => {
+                            if (!response.ok) return null;
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data) {
+                                estadosCarregadosGrafico.set(estadoInfo.estado, data);
+                            }
+                            return data;
+                        })
+                        .catch(() => null);
+                });
+                
+                return Promise.all(promises).then(results => {
+                    // Combina todos os estados em um único GeoJSON
+                    const allFeatures = [];
+                    results.forEach(geojson => {
+                        if (geojson && geojson.features) {
+                            allFeatures.push(...geojson.features);
+                        }
+                    });
+                    
+                    dadosGeoJSON = {
+                        type: 'FeatureCollection',
+                        features: allFeatures
+                    };
+                    setoresCarregados = true;
+                    return dadosGeoJSON;
+                });
+            } else {
+                // Fallback: carregar arquivo completo
+                const geojsonPaths = [
+                    `${baseUrl}/data/setores_censitarios_brasil_ultra.geojson`,
+                    `${baseUrl}/data/setores_censitarios_real.geojson`
+                ];
+                
+                let currentIndex = 0;
+                function tryLoadNext() {
+                    if (currentIndex >= geojsonPaths.length) {
+                        return Promise.resolve(null);
+                    }
+                    
+                    return fetch(geojsonPaths[currentIndex])
+                        .then(response => {
+                            if (!response.ok) throw new Error('Not found');
+                            return response.json();
+                        })
+                        .then(data => {
+                            dadosGeoJSON = data;
+                            setoresCarregados = true;
+                            return data;
+                        })
+                        .catch(() => {
+                            currentIndex++;
+                            return tryLoadNext();
+                        });
+                }
+                
+                return tryLoadNext();
+            }
+        });
     }
 
     // Dados de entidades geograficas disponiveis
@@ -97,18 +177,7 @@ document.addEventListener('DOMContentLoaded', function () {
             { id: 'se', nome: 'Sergipe', regiao: 'nordeste' },
             { id: 'to', nome: 'Tocantins', regiao: 'norte' }
         ],
-        municipios: [
-            { id: 'bh', nome: 'Belo Horizonte', estado: 'mg', regiao: 'sudeste' },
-            { id: 'sp', nome: 'São Paulo', estado: 'sp', regiao: 'sudeste' },
-            { id: 'rj', nome: 'Rio de Janeiro', estado: 'rj', regiao: 'sudeste' },
-            { id: 'salvador', nome: 'Salvador', estado: 'ba', regiao: 'nordeste' },
-            { id: 'fortaleza', nome: 'Fortaleza', estado: 'ce', regiao: 'nordeste' },
-            { id: 'brasilia', nome: 'Brasília', estado: 'df', regiao: 'centro_oeste' },
-            { id: 'curitiba', nome: 'Curitiba', estado: 'pr', regiao: 'sul' },
-            { id: 'recife', nome: 'Recife', estado: 'pe', regiao: 'nordeste' },
-            { id: 'porto_alegre', nome: 'Porto Alegre', estado: 'rs', regiao: 'sul' },
-            { id: 'manaus', nome: 'Manaus', estado: 'am', regiao: 'norte' }
-        ],
+        municipios: [], // Será preenchido dinamicamente dos dados carregados
         setores: []
     };
 
@@ -133,12 +202,31 @@ document.addEventListener('DOMContentLoaded', function () {
         if (nivel === 'setores' && dadosGeoJSON) {
             const setorFeature = dadosGeoJSON.features.find(f => {
                 const props = f.properties;
-                const codigoSetor = props.CD_SETOR || props.CD_GEOCODI;
-                return codigoSetor === entidadeId;
+                const codigoSetor = props.CD_SETOR || props.CD_GEOCODI || props.CD_MUN;
+                return codigoSetor === entidadeId || codigoSetor.toString() === entidadeId.toString();
             });
 
             if (setorFeature) {
                 return processarIndiceSetorGeoJSON(setorFeature.properties, ano.toString(), indice);
+            }
+        }
+        
+        // Para municípios, calcular média dos setores do município
+        if (nivel === 'municipios' && dadosGeoJSON) {
+            const codigoMunicipio = entidadeId.toString();
+            const setoresMunicipio = dadosGeoJSON.features.filter(f => {
+                const props = f.properties;
+                const codigo = (props.CD_MUN || props.COD_MUN || '').toString();
+                return codigo === codigoMunicipio || codigo.startsWith(codigoMunicipio);
+            });
+            
+            if (setoresMunicipio.length > 0) {
+                // Calcula média dos índices dos setores do município
+                const valores = setoresMunicipio.map(f => 
+                    processarIndiceSetorGeoJSON(f.properties, ano.toString(), indice)
+                );
+                const media = valores.reduce((a, b) => a + b, 0) / valores.length;
+                return normalizarValor(media);
             }
         }
 
@@ -414,6 +502,32 @@ document.addEventListener('DOMContentLoaded', function () {
             // Desabilitar select de entidade ate selecionar estado
             selectEntidade.disabled = true;
             selectEntidade.innerHTML = '<option value="">Selecione um estado primeiro</option>';
+        } else if (nivel === 'municipios') {
+            // Para municípios, carregar lista dinâmica dos dados
+            containerFiltro.style.display = 'none';
+            selectEntidade.disabled = true;
+            selectEntidade.innerHTML = '<option value="">Carregando municípios...</option>';
+            
+            carregarDadosGeoJSON().then(() => {
+                atualizarListaMunicipios();
+                const entidades = entidadesGeograficas.municipios || [];
+                selectEntidade.innerHTML = '';
+                selectEntidade.disabled = false;
+                
+                if (entidades.length === 0) {
+                    selectEntidade.innerHTML = '<option value="">Nenhum município encontrado</option>';
+                    return;
+                }
+                
+                entidades.forEach(entidade => {
+                    const option = document.createElement('option');
+                    option.value = entidade.id;
+                    option.textContent = entidade.nome;
+                    selectEntidade.appendChild(option);
+                });
+            }).catch(() => {
+                selectEntidade.innerHTML = '<option value="">Erro ao carregar municípios</option>';
+            });
         } else {
             // Para outros niveis, esconder filtro adicional
             containerFiltro.style.display = 'none';
@@ -486,6 +600,47 @@ document.addEventListener('DOMContentLoaded', function () {
         return setoresDoEstado;
     }
 
+    /**
+     * Atualiza lista de municípios a partir dos dados GeoJSON carregados
+     */
+    function atualizarListaMunicipios() {
+        if (!dadosGeoJSON || !dadosGeoJSON.features) {
+            return;
+        }
+        
+        const municipiosMap = new Map();
+        
+        dadosGeoJSON.features.forEach(feature => {
+            const props = feature.properties;
+            const codigoMunicipio = props.CD_MUN || props.COD_MUN || '';
+            const nomeMunicipio = props.NM_MUNICIP || props.NM_MUN || '';
+            const uf = (props.NM_UF || props.SIGLA_UF || '').toLowerCase();
+            
+            if (codigoMunicipio && nomeMunicipio) {
+                const id = codigoMunicipio.toString();
+                if (!municipiosMap.has(id)) {
+                    // Encontrar estado correspondente
+                    const estado = entidadesGeograficas.estados.find(e => {
+                        const codigoIBGE = obterCodigoIBGEEstado(e.id);
+                        return codigoMunicipio.toString().startsWith(codigoIBGE) || 
+                               uf === e.id.toLowerCase();
+                    });
+                    
+                    municipiosMap.set(id, {
+                        id: id,
+                        nome: nomeMunicipio,
+                        estado: estado ? estado.id : 'mg',
+                        regiao: estado ? estado.regiao : 'sudeste',
+                        codigo: codigoMunicipio
+                    });
+                }
+            }
+        });
+        
+        entidadesGeograficas.municipios = Array.from(municipiosMap.values())
+            .sort((a, b) => a.nome.localeCompare(b.nome));
+    }
+    
     /**
      * Obtem codigo IBGE do estado (2 digitos)
      */

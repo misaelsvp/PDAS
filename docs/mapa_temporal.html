@@ -435,13 +435,31 @@
                 };
                 
                 // Encontra estados que intersectam com o viewport
+                // Usa lógica mais permissiva para garantir que todos os estados sejam detectados
                 const estadosVisiveis = [];
                 for (const [sigla, boundsEstado] of Object.entries(estadosBounds)) {
-                    if (!(ne.lng < boundsEstado.minLng || sw.lng > boundsEstado.maxLng ||
-                          ne.lat < boundsEstado.minLat || sw.lat > boundsEstado.maxLat)) {
+                    // Verifica interseção: estados que se sobrepõem com o viewport
+                    const intersecta = !(
+                        ne.lng < boundsEstado.minLng || 
+                        sw.lng > boundsEstado.maxLng ||
+                        ne.lat < boundsEstado.minLat || 
+                        sw.lat > boundsEstado.maxLat
+                    );
+                    
+                    // Também inclui se o centro do estado está no viewport (mais permissivo)
+                    const centroLat = (boundsEstado.minLat + boundsEstado.maxLat) / 2;
+                    const centroLng = (boundsEstado.minLng + boundsEstado.maxLng) / 2;
+                    const centroNoViewport = (
+                        centroLat >= sw.lat && centroLat <= ne.lat &&
+                        centroLng >= sw.lng && centroLng <= ne.lng
+                    );
+                    
+                    if (intersecta || centroNoViewport) {
                         estadosVisiveis.push(sigla);
                     }
                 }
+                
+                console.log(`Estados visíveis detectados: ${estadosVisiveis.join(', ')}`);
                 
                 // Carrega arquivos dos estados visíveis
                 const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
@@ -456,21 +474,30 @@
                     );
                     
                     if (!estadoInfo) {
+                        console.warn(`Estado ${sigla} não encontrado no índice`);
                         return Promise.resolve(null);
                     }
                     
+                    console.log(`Carregando estado ${sigla} de ${estadoInfo.arquivo}`);
                     return fetch(`${baseUrl}/data/${estadoInfo.arquivo}`)
                         .then(response => {
-                            if (!response.ok) return null;
+                            if (!response.ok) {
+                                console.error(`Erro ao carregar ${sigla}: HTTP ${response.status}`);
+                                return null;
+                            }
                             return response.json();
                         })
                         .then(data => {
                             if (data) {
                                 estadosCarregados.set(sigla, data);
+                                console.log(`Estado ${sigla} carregado: ${data.features ? data.features.length : 0} setores`);
                             }
                             return data;
                         })
-                        .catch(() => null);
+                        .catch(error => {
+                            console.error(`Erro ao carregar estado ${sigla}:`, error);
+                            return null;
+                        });
                 });
                 
                 return Promise.all(promises).then(results => {
