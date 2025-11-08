@@ -190,6 +190,9 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
+    <!-- Turf.js para operações geoespaciais (filtragem e simplificação) -->
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    
     <script>
         /**
          * Script para visualizacao temporal de indices de vulnerabilidade social
@@ -222,6 +225,8 @@
         let currentLayer = null;
         let currentPeriod = '2022';
         let currentIndice = 'saude';
+        let allGeoJSONData = null; // Armazena todos os dados carregados
+        let loadTimeout = null; // Para debounce do carregamento
         
         /**
          * Funcao para obter cor baseada no valor do indice
@@ -356,130 +361,229 @@
         }
         
         /**
-         * Funcao para carregar dados do periodo e indice selecionados
+         * Carrega o GeoJSON completo uma vez e armazena em memória
+         * Esta função é chamada apenas na primeira vez
+         */
+        function loadFullGeoJSON() {
+            if (allGeoJSONData) {
+                return Promise.resolve(allGeoJSONData);
+            }
+            
+            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
+            const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
+            
+            document.getElementById('info-text').innerHTML = 
+                '<span style="color: #0066cc;">Carregando dados do Brasil... Isso pode levar alguns minutos.</span>';
+            
+            return fetch(geojsonPath)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    document.getElementById('info-text').innerHTML = 
+                        '<span style="color: #0066cc;">Processando dados... Por favor, aguarde.</span>';
+                    return response.json();
+                })
+                .then(data => {
+                    allGeoJSONData = data;
+                    document.getElementById('info-text').innerHTML = 
+                        '<span style="color: #2e7d32;">Dados carregados! Navegue pelo mapa para visualizar os setores.</span>';
+                    return data;
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar dados GeoJSON:', error);
+                    document.getElementById('info-text').innerHTML = 
+                        '<span style="color: red;">Erro ao carregar dados. Verifique se o arquivo está disponível.</span>';
+                    throw error;
+                });
+        }
+        
+        /**
+         * Filtra setores visíveis no viewport atual e simplifica geometrias baseado no zoom
          * 
-         * Carrega arquivos GeoJSON reais dos setores censitarios e aplica
-         * valores de indices baseados no periodo e indice selecionados.
+         * @param {string} period - Periodo selecionado
+         * @param {string} indice - Indice selecionado
+         */
+        function loadVisibleData(period, indice) {
+            // Remove camada anterior se existir
+            if (currentLayer) {
+                map.removeLayer(currentLayer);
+                currentLayer = null;
+            }
+            
+            // Carrega dados completos se ainda não foram carregados
+            loadFullGeoJSON().then(() => {
+                // Obtém bounding box do viewport atual (com margem de 20% para pré-carregar áreas próximas)
+                const bounds = map.getBounds();
+                const sw = bounds.getSouthWest();
+                const ne = bounds.getNorthEast();
+                
+                // Cria bounding box com margem
+                const margin = 0.2;
+                const latDiff = ne.lat - sw.lat;
+                const lngDiff = ne.lng - sw.lng;
+                
+                const bbox = [
+                    sw.lng - (lngDiff * margin), // minX
+                    sw.lat - (latDiff * margin), // minY
+                    ne.lng + (lngDiff * margin), // maxX
+                    ne.lat + (latDiff * margin)  // maxY
+                ];
+                
+                // Filtra apenas features dentro do bounding box
+                const visibleFeatures = allGeoJSONData.features.filter(feature => {
+                    if (!feature.geometry || !feature.geometry.coordinates) return false;
+                    
+                    // Calcula bounding box do feature
+                    const coords = feature.geometry.coordinates[0]; // Primeiro anel do polígono
+                    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+                    
+                    coords.forEach(coord => {
+                        const [lng, lat] = coord;
+                        minLng = Math.min(minLng, lng);
+                        minLat = Math.min(minLat, lat);
+                        maxLng = Math.max(maxLng, lng);
+                        maxLat = Math.max(maxLat, lat);
+                    });
+                    
+                    // Verifica se há interseção com o viewport
+                    return !(maxLng < bbox[0] || minLng > bbox[2] || maxLat < bbox[1] || minLat > bbox[3]);
+                });
+                
+                // Simplifica geometrias baseado no nível de zoom (zoom menor = mais simplificação)
+                const zoom = map.getZoom();
+                const tolerance = zoom < 8 ? 0.01 : zoom < 12 ? 0.005 : 0.001;
+                
+                // Processa features visíveis
+                const processedFeatures = visibleFeatures.map(feature => {
+                    const props = feature.properties;
+                    const valorIndice = processarIndiceSetor(props, period, indice);
+                    
+                    props.indice_valor = parseFloat(valorIndice.toFixed(3));
+                    props.periodo = period;
+                    props.indice_tipo = indice;
+                    props.indice_nome = getIndiceName(indice);
+                    
+                    // Simplifica geometria se zoom estiver baixo
+                    let geometry = feature.geometry;
+                    if (zoom < 10 && typeof turf !== 'undefined' && turf.simplify) {
+                        try {
+                            const simplified = turf.simplify(turf.feature(geometry), { tolerance: tolerance, highQuality: false });
+                            geometry = simplified.geometry;
+                        } catch (e) {
+                            console.warn('Erro ao simplificar geometria:', e);
+                        }
+                    }
+                    
+                    return {
+                        type: 'Feature',
+                        properties: props,
+                        geometry: geometry
+                    };
+                });
+                
+                // Cria GeoJSON apenas com features visíveis
+                const visibleGeoJSON = {
+                    type: 'FeatureCollection',
+                    features: processedFeatures
+                };
+                
+                // Atualiza contador
+                document.getElementById('info-text').innerHTML = 
+                    `<span style="color: #0066cc;">Exibindo ${processedFeatures.length.toLocaleString('pt-BR')} setores visíveis de ${allGeoJSONData.features.length.toLocaleString('pt-BR')} total</span>`;
+                
+                // Cria camada GeoJSON apenas com setores visíveis
+                currentLayer = L.geoJSON(visibleGeoJSON, {
+                    style: function(feature) {
+                        const valor = feature.properties.indice_valor || 0.5;
+                        return {
+                            fillColor: getColor(valor),
+                            color: '#fff',
+                            weight: zoom < 10 ? 0.3 : 0.5,
+                            opacity: 0.8,
+                            fillOpacity: 0.6
+                        };
+                    },
+                    onEachFeature: function(feature, layer) {
+                        const props = feature.properties;
+                        const valor = props.indice_valor || 0.5;
+                        const nomeMunicipio = props.NM_MUN || props.NM_MUNICIP || 'N/A';
+                        const codigoSetor = props.CD_SETOR || props.CD_MUN || 'N/A';
+                        
+                        const popupContent = `
+                            <div style="min-width: 200px;">
+                                <h6 style="margin-top: 0;">Setor Censitário</h6>
+                                <p><strong>Município:</strong> ${nomeMunicipio}</p>
+                                <p><strong>Código:</strong> ${codigoSetor}</p>
+                                <p><strong>Período:</strong> ${props.periodo}</p>
+                                <p><strong>Índice:</strong> ${props.indice_nome}</p>
+                                <p><strong>Valor:</strong> ${valor.toFixed(3)}</p>
+                            </div>
+                        `;
+                        layer.bindPopup(popupContent);
+                        
+                        layer.on('mouseover', function(e) {
+                            this.setStyle({
+                                weight: 2,
+                                fillOpacity: 0.8
+                            });
+                        });
+                        
+                        layer.on('mouseout', function(e) {
+                            this.setStyle({
+                                weight: zoom < 10 ? 0.3 : 0.5,
+                                fillOpacity: 0.6
+                            });
+                        });
+                        
+                        layer.on('click', function(e) {
+                            updateInfoPanel({
+                                nome: nomeMunicipio,
+                                codigo_setor: codigoSetor,
+                                periodo: props.periodo,
+                                indice: props.indice_tipo,
+                                valor: valor
+                            });
+                        });
+                    }
+                });
+                
+                currentLayer.addTo(map);
+                updatePeriodInfo(period, indice);
+            });
+        }
+        
+        /**
+         * Funcao para carregar dados do periodo e indice selecionados
+         * Usa carregamento progressivo baseado no viewport
          * 
          * @param {string} period - Periodo selecionado
          * @param {string} indice - Indice selecionado
          */
         function loadData(period, indice) {
-            // Remove camada anterior se existir
-            if (currentLayer) {
-                map.removeLayer(currentLayer);
-            }
-            
-            // Carrega GeoJSON com TODOS os setores censitarios do Brasil
-            // Usa versao ultra otimizada (270 MB - carregamento pode demorar)
-            // Tenta carregar o arquivo completo primeiro, com fallback para versão menor
-            // Detecta baseurl automaticamente para GitHub Pages
-            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
-            const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
-            
-            // Mostrar mensagem de carregamento
-            document.getElementById('info-text').innerHTML = 
-                '<span style="color: #0066cc;">Carregando setores censitários... Isso pode levar alguns minutos.</span>';
-            
-            fetch(geojsonPath)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    // Mostrar progresso
-                    document.getElementById('info-text').innerHTML = 
-                        '<span style="color: #0066cc;">Processando dados... Por favor, aguarde.</span>';
-                    return response.json();
-                })
-                .then(geojsonData => {
-                    // Processa cada feature (setor censitario) e calcula valores do indice
-                    // baseados no periodo e indice selecionados
-                    geojsonData.features.forEach(feature => {
-                        const props = feature.properties;
-                        
-                        // Calcula valores de indice baseados em dados processados
-                        const valorIndice = processarIndiceSetor(props, period, indice);
-                        
-                        // Adiciona propriedades ao feature
-                        props.indice_valor = parseFloat(valorIndice.toFixed(3));
-                        props.periodo = period;
-                        props.indice_tipo = indice;
-                        props.indice_nome = getIndiceName(indice);
-                    });
-                    
-                    // Cria camada GeoJSON com poligonos dos setores
-                    currentLayer = L.geoJSON(geojsonData, {
-                        style: function(feature) {
-                            const valor = feature.properties.indice_valor || 0.5;
-                            return {
-                                fillColor: getColor(valor),
-                                color: '#fff',
-                                weight: 0.5,
-                                opacity: 0.8,
-                                fillOpacity: 0.6
-                            };
-                        },
-                        onEachFeature: function(feature, layer) {
-                            const props = feature.properties;
-                            const valor = props.indice_valor || 0.5;
-                            const nomeMunicipio = props.NM_MUN || props.NM_MUNICIP || 'N/A';
-                            const codigoSetor = props.CD_SETOR || props.CD_MUN || 'N/A';
-                            
-                            const popupContent = `
-                                <div style="min-width: 200px;">
-                                    <h6 style="margin-top: 0;">Setor Censitário</h6>
-                                    <p><strong>Município:</strong> ${nomeMunicipio}</p>
-                                    <p><strong>Código:</strong> ${codigoSetor}</p>
-                                    <p><strong>Período:</strong> ${props.periodo}</p>
-                                    <p><strong>Índice:</strong> ${props.indice_nome}</p>
-                                    <p><strong>Valor:</strong> ${valor.toFixed(3)}</p>
-                                </div>
-                            `;
-                            layer.bindPopup(popupContent);
-                            
-                            // Efeito hover
-                            layer.on('mouseover', function(e) {
-                                this.setStyle({
-                                    weight: 2,
-                                    fillOpacity: 0.8
-                                });
-                            });
-                            
-                            layer.on('mouseout', function(e) {
-                                this.setStyle({
-                                    weight: 0.5,
-                                    fillOpacity: 0.6
-                                });
-                            });
-                            
-                            layer.on('click', function(e) {
-                                updateInfoPanel({
-                                    nome: nomeMunicipio,
-                                    codigo_setor: codigoSetor,
-                                    periodo: props.periodo,
-                                    indice: props.indice_tipo,
-                                    valor: valor
-                                });
-                            });
-                        }
-                    });
-                    
-                    currentLayer.addTo(map);
-                    
-                    // Ajusta zoom para mostrar todos os setores
-                    if (geojsonData.features.length > 0) {
-                        map.fitBounds(currentLayer.getBounds());
-                    }
-                    
-                    // Atualiza informacoes do periodo
-                    updatePeriodInfo(period, indice);
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar dados GeoJSON:', error);
-                    document.getElementById('info-text').innerHTML = 
-                        '<span style="color: red;">Erro ao carregar dados dos setores censitários. Verifique se o arquivo GeoJSON está disponível.</span>';
-                });
+            currentPeriod = period;
+            currentIndice = indice;
+            loadVisibleData(period, indice);
         }
+        
+        // Recarrega dados visíveis quando o mapa é movido ou zoomado (com debounce)
+        map.on('moveend', function() {
+            if (loadTimeout) clearTimeout(loadTimeout);
+            loadTimeout = setTimeout(() => {
+                if (allGeoJSONData) {
+                    loadVisibleData(currentPeriod, currentIndice);
+                }
+            }, 300);
+        });
+        
+        map.on('zoomend', function() {
+            if (loadTimeout) clearTimeout(loadTimeout);
+            loadTimeout = setTimeout(() => {
+                if (allGeoJSONData) {
+                    loadVisibleData(currentPeriod, currentIndice);
+                }
+            }, 300);
+        });
         
         /**
          * Atualiza o painel de informacoes com dados do setor clicado
