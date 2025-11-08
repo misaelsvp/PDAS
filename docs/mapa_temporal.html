@@ -389,135 +389,6 @@
         }
         
         /**
-         * Carrega setores de estados visíveis no viewport
-         * Usa arquivos divididos por estado para economizar dados
-         */
-        function loadEstadosVisiveis(bounds) {
-            return loadIndiceEstados().then(indice => {
-                if (!indice) {
-                    // Fallback: tentar carregar arquivo completo
-                    return loadFullGeoJSONFallback();
-                }
-                
-                // Determina quais estados estão no viewport
-                const sw = bounds.getSouthWest();
-                const ne = bounds.getNorthEast();
-                
-                // Coordenadas aproximadas dos estados brasileiros
-                const estadosBounds = {
-                    'AC': { minLat: -11.0, maxLat: -7.0, minLng: -74.0, maxLng: -66.0 },
-                    'AL': { minLat: -10.5, maxLat: -8.5, minLng: -38.0, maxLng: -35.5 },
-                    'AP': { minLat: 1.0, maxLat: 4.5, minLng: -52.0, maxLng: -50.0 },
-                    'AM': { minLat: -12.0, maxLat: 2.0, minLng: -74.0, maxLng: -56.0 },
-                    'BA': { minLat: -18.0, maxLat: -8.0, minLng: -46.0, maxLng: -34.0 },
-                    'CE': { minLat: -7.5, maxLat: -2.5, minLng: -41.0, maxLng: -37.0 },
-                    'DF': { minLat: -16.0, maxLat: -15.0, minLng: -48.0, maxLng: -47.0 },
-                    'ES': { minLat: -21.0, maxLat: -17.5, minLng: -41.5, maxLng: -39.5 },
-                    'GO': { minLat: -19.0, maxLat: -13.0, minLng: -52.0, maxLng: -45.0 },
-                    'MA': { minLat: -10.0, maxLat: -1.0, minLng: -48.0, maxLng: -41.0 },
-                    'MT': { minLat: -18.0, maxLat: -7.0, minLng: -61.0, maxLng: -50.0 },
-                    'MS': { minLat: -24.0, maxLat: -17.0, minLng: -58.0, maxLng: -50.0 },
-                    'MG': { minLat: -23.0, maxLat: -14.0, minLng: -51.0, maxLng: -39.0 },
-                    'PA': { minLat: -10.0, maxLat: 2.0, minLng: -58.0, maxLng: -46.0 },
-                    'PB': { minLat: -8.5, maxLat: -6.0, minLng: -38.5, maxLng: -34.5 },
-                    'PR': { minLat: -26.0, maxLat: -22.0, minLng: -54.0, maxLng: -48.0 },
-                    'PE': { minLat: -9.5, maxLat: -7.0, minLng: -41.0, maxLng: -34.5 },
-                    'PI': { minLat: -11.0, maxLat: -2.5, minLng: -45.0, maxLng: -40.5 },
-                    'RJ': { minLat: -23.5, maxLat: -20.5, minLng: -45.0, maxLng: -40.5 },
-                    'RN': { minLat: -6.0, maxLat: -4.5, minLng: -38.0, maxLng: -35.0 },
-                    'RS': { minLat: -34.0, maxLat: -27.0, minLng: -58.0, maxLng: -49.0 },
-                    'RO': { minLat: -13.0, maxLat: -7.0, minLng: -66.0, maxLng: -59.0 },
-                    'RR': { minLat: 0.5, maxLat: 6.0, minLng: -65.0, maxLng: -59.0 },
-                    'SC': { minLat: -29.0, maxLat: -25.5, minLng: -53.5, maxLng: -48.5 },
-                    'SP': { minLat: -25.0, maxLat: -19.5, minLng: -53.0, maxLng: -44.0 },
-                    'SE': { minLat: -11.5, maxLat: -9.5, minLng: -38.0, maxLng: -36.0 },
-                    'TO': { minLat: -13.5, maxLat: -5.0, minLng: -50.0, maxLng: -45.0 }
-                };
-                
-                // Encontra estados que intersectam com o viewport
-                // Usa lógica mais permissiva para garantir que todos os estados sejam detectados
-                const estadosVisiveis = [];
-                for (const [sigla, boundsEstado] of Object.entries(estadosBounds)) {
-                    // Verifica interseção: estados que se sobrepõem com o viewport
-                    const intersecta = !(
-                        ne.lng < boundsEstado.minLng || 
-                        sw.lng > boundsEstado.maxLng ||
-                        ne.lat < boundsEstado.minLat || 
-                        sw.lat > boundsEstado.maxLat
-                    );
-                    
-                    // Também inclui se o centro do estado está no viewport (mais permissivo)
-                    const centroLat = (boundsEstado.minLat + boundsEstado.maxLat) / 2;
-                    const centroLng = (boundsEstado.minLng + boundsEstado.maxLng) / 2;
-                    const centroNoViewport = (
-                        centroLat >= sw.lat && centroLat <= ne.lat &&
-                        centroLng >= sw.lng && centroLng <= ne.lng
-                    );
-                    
-                    if (intersecta || centroNoViewport) {
-                        estadosVisiveis.push(sigla);
-                    }
-                }
-                
-                console.log(`Estados visíveis detectados: ${estadosVisiveis.join(', ')}`);
-                
-                // Carrega arquivos dos estados visíveis
-                const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
-                const promises = estadosVisiveis.map(sigla => {
-                    if (estadosCarregados.has(sigla)) {
-                        return Promise.resolve(estadosCarregados.get(sigla));
-                    }
-                    
-                    // Encontra arquivo do estado no índice
-                    const estadoInfo = indice.estados.find(e => 
-                        e.estado === sigla || e.arquivo.includes(sigla.toLowerCase())
-                    );
-                    
-                    if (!estadoInfo) {
-                        console.warn(`Estado ${sigla} não encontrado no índice`);
-                        return Promise.resolve(null);
-                    }
-                    
-                    console.log(`Carregando estado ${sigla} de ${estadoInfo.arquivo}`);
-                    return fetch(`${baseUrl}/data/${estadoInfo.arquivo}`)
-                        .then(response => {
-                            if (!response.ok) {
-                                console.error(`Erro ao carregar ${sigla}: HTTP ${response.status}`);
-                                return null;
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            if (data) {
-                                estadosCarregados.set(sigla, data);
-                                console.log(`Estado ${sigla} carregado: ${data.features ? data.features.length : 0} setores`);
-                            }
-                            return data;
-                        })
-                        .catch(error => {
-                            console.error(`Erro ao carregar estado ${sigla}:`, error);
-                            return null;
-                        });
-                });
-                
-                return Promise.all(promises).then(results => {
-                    // Combina todos os estados em um único GeoJSON
-                    const allFeatures = [];
-                    results.forEach(geojson => {
-                        if (geojson && geojson.features) {
-                            allFeatures.push(...geojson.features);
-                        }
-                    });
-                    
-                    return {
-                        type: 'FeatureCollection',
-                        features: allFeatures
-                    };
-                });
-            });
-        }
-        
-        /**
          * Fallback: carrega arquivo completo se não houver divisão por estado
          */
         function loadFullGeoJSONFallback() {
@@ -579,22 +450,74 @@
         }
         
         /**
-         * Carrega dados - tenta por estados primeiro, depois fallback para arquivo completo
+         * Carrega TODOS os estados de uma vez - sem filtro por viewport
          */
         function loadFullGeoJSON() {
             if (allGeoJSONData) {
                 return Promise.resolve(allGeoJSONData);
             }
             
-            const bounds = map.getBounds();
+            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
             
-            // Tenta carregar estados visíveis primeiro (mais eficiente)
-            return loadEstadosVisiveis(bounds).then(geojsonData => {
-                if (!geojsonData || !geojsonData.features || geojsonData.features.length === 0) {
+            // Tenta carregar índice de estados primeiro
+            return loadIndiceEstados().then(indice => {
+                if (indice && indice.estados) {
+                    document.getElementById('info-text').innerHTML = 
+                        '<span style="color: #0066cc;">Carregando todos os estados do Brasil... Isso pode levar alguns minutos.</span>';
+                    
+                    // Carrega TODOS os estados de uma vez
+                    const promises = indice.estados.map(estadoInfo => {
+                        if (estadosCarregados.has(estadoInfo.estado)) {
+                            return Promise.resolve(estadosCarregados.get(estadoInfo.estado));
+                        }
+                        
+                        return fetch(`${baseUrl}/data/${estadoInfo.arquivo}`)
+                            .then(response => {
+                                if (!response.ok) {
+                                    console.warn(`Erro ao carregar ${estadoInfo.estado}: HTTP ${response.status}`);
+                                    return null;
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                if (data) {
+                                    estadosCarregados.set(estadoInfo.estado, data);
+                                }
+                                return data;
+                            })
+                            .catch(error => {
+                                console.error(`Erro ao carregar estado ${estadoInfo.estado}:`, error);
+                                return null;
+                            });
+                    });
+                    
+                    return Promise.all(promises).then(results => {
+                        // Combina TODOS os estados em um único GeoJSON
+                        const allFeatures = [];
+                        let totalCarregados = 0;
+                        results.forEach((geojson, index) => {
+                            if (geojson && geojson.features) {
+                                allFeatures.push(...geojson.features);
+                                totalCarregados++;
+                            }
+                        });
+                        
+                        const totalSetores = allFeatures.length;
+                        document.getElementById('info-text').innerHTML = 
+                            `<span style="color: #2e7d32;">Todos os dados carregados! ${totalSetores.toLocaleString('pt-BR')} setores de ${totalCarregados} estados disponíveis.</span>`;
+                        
+                        allGeoJSONData = {
+                            type: 'FeatureCollection',
+                            features: allFeatures
+                        };
+                        
+                        console.log(`Total de setores carregados: ${totalSetores}`);
+                        return allGeoJSONData;
+                    });
+                } else {
                     // Fallback: carregar arquivo completo
                     return loadFullGeoJSONFallback();
                 }
-                return geojsonData;
             }).then(geojsonData => {
                 if (!geojsonData) {
                     document.getElementById('info-text').innerHTML = 
@@ -602,8 +525,6 @@
                     return null;
                 }
                 
-                // Armazena dados carregados para filtragem
-                allGeoJSONData = geojsonData;
                 return geojsonData;
             });
         }
@@ -782,18 +703,22 @@
         }
         
         // Recarrega dados visíveis quando o mapa é movido ou zoomado (com debounce)
+        // Agora apenas filtra os setores já carregados - não recarrega estados
         map.on('moveend', function() {
             if (loadTimeout) clearTimeout(loadTimeout);
             loadTimeout = setTimeout(() => {
-                // Se estiver usando divisão por estados, recarrega (o cache é gerenciado automaticamente)
-                loadVisibleData(currentPeriod, currentIndice);
+                if (allGeoJSONData) {
+                    loadVisibleData(currentPeriod, currentIndice);
+                }
             }, 300);
         });
         
         map.on('zoomend', function() {
             if (loadTimeout) clearTimeout(loadTimeout);
             loadTimeout = setTimeout(() => {
-                loadVisibleData(currentPeriod, currentIndice);
+                if (allGeoJSONData) {
+                    loadVisibleData(currentPeriod, currentIndice);
+                }
             }, 300);
         });
         
