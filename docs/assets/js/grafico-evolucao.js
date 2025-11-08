@@ -36,8 +36,12 @@ document.addEventListener('DOMContentLoaded', function () {
             return Promise.resolve(dadosGeoJSON);
         }
 
+        // Detecta baseurl automaticamente para GitHub Pages
+        const baseUrl = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+        const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
+        
         // Tenta carregar o arquivo completo primeiro, com fallback para versão menor
-        return fetch('/data/setores_censitarios_real.geojson')
+        return fetch(geojsonPath)
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);

@@ -3,8 +3,8 @@ description: "Trabalho de Conclusão de Curso - Análise de Vulnerabilidade Soci
 author: "Estudante TCC"
 
 # Configurações básicas
-baseurl: ""
-url: ""
+baseurl: "/Previsao-de-Demanda-Aplicada-na-Saude"
+url: "https://misaelsvp.github.io"
 
 # Processamento
 markdown: kramdown

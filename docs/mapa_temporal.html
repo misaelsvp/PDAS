@@ -373,7 +373,9 @@
             // Carrega GeoJSON com TODOS os setores censitarios do Brasil
             // Usa versao ultra otimizada (270 MB - carregamento pode demorar)
             // Tenta carregar o arquivo completo primeiro, com fallback para versão menor
-            const geojsonPath = `/data/setores_censitarios_real.geojson`;
+            // Detecta baseurl automaticamente para GitHub Pages
+            const baseUrl = window.location.pathname.split('/mapa_temporal.html')[0] || '';
+            const geojsonPath = `${baseUrl}/data/setores_censitarios_real.geojson`;
             
             // Mostrar mensagem de carregamento
             document.getElementById('info-text').innerHTML = 

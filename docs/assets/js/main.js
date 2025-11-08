@@ -37,7 +37,9 @@ document.addEventListener('DOMContentLoaded', function () {
      * de cada setor censitario, incluindo codigos, nomes de municipios,
      * areas e indicadores socioeconomicos.
      */
-    fetch('/data/setores_censitarios_real.geojson')
+    // Detecta baseurl automaticamente para GitHub Pages
+    const baseUrl = window.location.pathname.split('/').slice(0, -1).join('/') || '';
+    fetch(`${baseUrl}/data/setores_censitarios_real.geojson`)
         .then(response => {
             // Verifica se a resposta HTTP foi bem-sucedida
             if (!response.ok) {
